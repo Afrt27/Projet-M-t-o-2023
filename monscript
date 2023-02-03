@@ -1,0 +1,421 @@
+#!/bin/bash
+
+oldIFS=$IFS
+
+
+declare -i test_min_opt=1			#This function declares variables with names "test_min_opt", "test_fic", "nb_lieux", and "nb_tri" as integers.  
+declare -i test_fic=1				#The values assigned to these variables are "1". 
+declare -i nb_place=1				#These variables are used for some kind of comparison or conditional operations in the script.
+declare -i nb_sort=1
+
+##########################################		Function --help		###################################################
+
+if [ $1 = "--help" ]; then			## each option is associated with what it will do
+    echo " "
+    echo " Here are the different options :"
+    echo "-t<mode> : to get the temperature"
+    echo " -> t1 : minimum, maximum and average temperature per station, in ascending order by station number "
+    echo " -> t2 : average temperature at all stations by date and time and chronological order "
+    echo " -> t3 : temperature by date and time, sorted in chronological order and then in ascending order by station ID "
+    echo "-p<mode> : to get the atmospheric pressure "
+    echo " -> t1 : minimum, maximum and average pressure per station and in ascending order of station number "
+    echo " -> t2 : average pressure at all stations, by date/time and sorted in chronological order "
+    echo " -> t3 : pressed by date/time and sorted chronologically and then in ascending order according to the station IDs "
+    echo " "
+    echo " -w : to get the wind "
+    echo " -m : to get the humidity"
+    echo " -h : to get the altitude of each station "
+    echo " "
+    echo " Here are location options"
+    echo " -F : for metropolitan France and Corsica "
+    echo " -G : for French Guiana "
+    echo " -S : to have Saint-Pierre and Miquelon "
+    echo " -A : for the Antilles"
+    echo " -O : to have the Indian Ocean"
+    echo " -Q : to have Antarctica "
+    echo " "
+    echo " Here are the sorting options "
+    echo " --tab : to sort by table "
+    echo " --abr : to sort using a binary search tree ABR "
+    echo " --avl : to sort using a balanced binary search tree AVL"
+    exit 0
+fi
+
+
+##########################################		test zone (see if parameters are ok)		###################################################
+
+for i in $*; do
+
+	if [ $i == "-f" -o $i == "meteo_filtered_data_v1.csv" ]; then				#This function checks whether the value of the variable $i is either equal to -f or equal to the file. If this condition is true, the value of the variable test_fic is set to 0.
+	    test_fic=0
+	fi
+	
+	if [ $i == "-F" ] || [ $i == "-G" ] || [ $i == "-S" ] || [ $i == "-A" ] || [ $i == "-O" ] || [ $i == "-Q" ] || [ $i == "-p1" ] || [ $i == "-p2" ] || [ $i == "-p3" ] || [ $i == "-t1" ] || [ $i == "-t2" ] || [ $i == "-t3" ] || [ $i == "-w" ] || [ $i == "-h" ] || [ $i == "-m" ] || [ $i == "-d" ]; then					#This function checks whether the value of the variable $i corresponds to one of the following values: -F, -G, -S, -A, -O, -Q, -p1, -p2, -p3, -t1, -t2, -t3, -w, -h, -m or -d. If any of these conditions are true, the value of the variable test_min_opt is set to 0.
+	    test_min_opt=0
+	fi 
+	if [ $i == "--avl" -o $i == "--abr" -o $i == "--tab" ]; then				#This function checks if the value of the variable $i is either --avl, --abr, or --tab. If one of these conditions is true, the value of the variable nb_tri is decremented by 1.
+		let "nb_sort -= 1"
+	fi
+		
+	if [ $i == "-F" ] || [ $i == "-G" ] || [ $i == "-S" ] || [ $i == "-A" ] || [ $i == "-O" ] || [ $i == "-Q" ]; then			#This function checks if the value of the variable $i is either -F, -G, -S, -A, -O, or -Q. If one of these conditions is true, the value of the variable nb_lieux is decremented by 1.
+		let "nb_place -= 1"
+	fi
+	
+done
+
+if ! ([ $test_fic == 0 ] && [ $test_min_opt == 0 ]) ; then						#This function checks if either of the conditions $test_fic is not equal to 0 or $test_min_opt is not equal to 0 is true. If the condition is true, it prints an error message 'error with file or option' and exits the script with a status code of 1
+	echo 'error with file or option'
+	exit 1
+fi
+
+if ! ([ $nb_place == 1 ] || [ $nb_place == 0 ] ); then							#This function checks if the value of the variable $nb_lieux is not equal to 1 or not equal to 0. If this condition is true, it prints an error message 'error too much places used' and exits the script with a status code of 2.
+	echo 'error too much places used'
+	exit 2
+fi
+if ! ([ $nb_sort == 1 ] || [ $nb_sort == 0 ]) ; then 							#This function checks if the value of the variable $nb_tri is not equal to 1 or not equal to 0. If this condition is true, it prints an error message 'error too much types of sort used' and exits the script with a status code of 3.
+    echo "error too much types of sort used"
+    exit 3
+fi 
+
+
+##########################################		loops for the analyse of parameters and options		###################################################
+
+
+
+
+choix_sort=0 				#this part of the script allows you to choose the sorting to be done
+										#This function loops through the command line arguments passed to the script ($*) and checks each argument to see if it is equal to --abr or --tab. If the argument is equal to --abr, the value of the variable choix_tri is set to 1. If the argument is equal to --tab, the value of the variable choix_tri is set to 2.
+
+
+
+for i in $*; do
+	if [ $i == "--abr" ] ; then
+		choix_sort=1
+	elif [ $i == "--tab" ] ; then
+		choix_sort=2
+	fi
+done
+
+
+
+
+	
+	
+for i in $*; do
+
+	if [ $i == "-F" ] ; then				#If the argument is -F, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "[0-8][1-9]...$" -e "9[0-5]...$" -e "2[a-b]...$", and saves the filtered output to a file lieux.csv.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep -e "[0-8][1-9]...$" -e "9[0-5]...$" -e "2[a-b]...$" > place.csv 
+		if [ $choix_sort -eq 0 ]; then			## Use C languages to sort by ABR, AVL or TAB 
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	
+	elif [ $i == "-G" ] ; then			#If the argument is -G, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "973..$", saves the filtered output to a file lieux.csv, compiles a C program triTAB.c into an executable triTAB, and runs the executable triTAB with the file lieux.csv and the value of the variable choix_tri as arguments.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep "973..$" > place.csv  
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	
+	elif [ $i == "-S" ] ; then			#If the argument is -S, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "975..$", and saves the filtered output to a file lieux.csv.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep "975..$" > place.csv
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	
+	elif [ $i == "-A" ] ; then			#If the argument is -A, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "-e "972..$" -e "971..$", and saves the filtered output to a file lieux.csv.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep -e "972..$" -e "971..$" > place.csv
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	
+	elif [ $i == "-O" ] ; then			#If the argument is -O, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "974..$", and saves the filtered output to a file lieux.csv.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep "974..$" > place.csv
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	
+	elif [ $i == "-Q" ] ; then				#If the argument is -Q, the script uses awk to extract the 15th column of the file, filters the output to only include lines that match the regular expression pattern "984..$", and saves the filtered output to a file lieux.csv.
+		awk -F"," '{print $15}' meteo_filtered_data_v1.csv | grep "984..$" > place.csv
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	fi
+	
+	## sort date (Try it doesn't work) We have to keep the 2nd colums and sort whith the years, month, day and at least the hours
+
+	##sort -t, -k2,2r $meteo_filtered_data_v1.csv > sorted_data.csv     ## -t is used to separate fields with ;
+	##cat sorted_data.csv         ## afficher le dossier trié
+	
+	if [ $i == "-h" ] ; then
+		cat meteo_filtered_data_v1.csv | awk -F"," '{print $1 , $14}' meteo_filtered_data_v1.csv | sort -nr > height.csv
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL height.csv $choix_sort
+		elif [ $choix_sort -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR height.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB height.csv $choix_sort
+		fi
+	fi
+	
+	#This option outputs the maximum humidity for each station. The humidity values will be sorted in descending order 
+				#This function performs the following actions:
+				#It checks if the value of the variable 'i' is equal to "-m".
+				#If the condition is true, it sorts the content of the file "*.csv" based on the values of the 6th column in reverse numerical order using the "sort" command.
+				#Then, it uses a "while" loop to read the content of the file "*.csv", excluding the first line, using the "read" command.
+	
+	if [ $i == "-m" ] ; then
+	    max=0
+	    file="meteo_filtered_data_v1.csv"
+	    stations=$( awk -F, '{print $1}' "$file" | sort -n | uniq )
+	    for station in $stations; do
+			data=$(grep "$station" "$file" | awk -F, '{print $7}'| sort -n)
+			
+			# Calculate the minimum, maximum, and average temperature (or pressure)
+			max=$(echo $data | cut -d" " -f1 | sort -r)
+			$max> hum.csv
+	    done 
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL place.csv $choix_sort
+		elif [ $choix_sort  -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR place.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB place.csv $choix_sort
+		fi
+	fi
+	
+	## if [ $i == "-w" ] ; then 			##The fonction we try for -w but she doesn't work, we did not know how to do the average of the wind
+	##	cat test1.csv | awk -F "," '{print $1 , $4, $5}' test1.csv | sort -n
+	##	cat test1.csv | grep -v "1$" | awk -F ', '  '{ sum=sum+$4 ; sum+=$5 } END { printf "Moyenne: %f \n", sum/NR }'  
+	##	tri choix_tri
+	##fi
+
+
+#It checks if the value of the variable 'i' is equal to "-p1"or "-t1".
+#If the condition is true, it sets the values of the variables "min", "max", and "avg" to 0.
+#It sets the value of the variable "file" to "*.csv".
+#It uses an "awk" command to extract the first column of the "file", sort it, and get a list of unique station names, which are stored in the "stations" variable.
+#It then uses a "for" loop to iterate through the "stations" and print the station name.
+#Inside the loop, it uses a pipeline of "grep" and "awk" commands to extract the values of the seventh column for the current station, sort them, and store the result in the "data" variable.
+#Finally, it prints the values of the "data" variable and sort with the C languages
+
+	if [ $i == "-p1" ] ; then 			## This makes  a call to the C programs which must then be sorted. A makefile was made but we didn't manage to implement it in the shell script
+	    min=0
+	    max=0
+	    avg=0
+	    file="meteo_filtered_data_v1.csv"
+	    stations=$( awk -F, '{print $1}' "$file" | sort -n | uniq )
+	    for station in $stations; do
+			data=$(grep "$station" "$file" | awk -F, '{print $7}'| sort -n)
+			
+			# Calculate the minimum, maximum, and average temperature (or pressure)
+			min=$(echo $data | cut -d" " -f1 | sort -n)
+			$min > presure.csv
+			#max=$(echo "$data" | tr " " "\n" | sort -n | tail -n 1)
+			#avg=$(echo "$data" | tr " " "\n" | awk '{sum+=$1} END {printf "%.2f\n", sum/NR}')
+	    done 
+		if [ $choix_sort -eq 0 ]; then
+			gcc sortAVL.c -o sortAVL
+			./sortAVL presure.csv $choix_sort
+		elif [ $choix_sort  -eq 1 ]; then
+			gcc sortABR.c -o sortABR
+			./sortABR presure.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB presure.csv $choix_sort
+		fi
+	fi
+	
+	if [ $i == "-t1" ] ; then 					
+	    min=0
+	    max=0
+	    avg=0
+	    file="meteo_filtered_data_v1.csv"
+	    stations=$( awk -F, '{print $1}' "$file" | sort -n | uniq )
+	    for station in $stations; do
+			data=$(grep "$station" "$file" | awk -F, '{print $11}'| sort -n)
+			
+			# Calculate the minimum, maximum, and average temperature (or pressure)
+			min=$(echo $data | cut -d" " -f1 | sort -n)
+			$min > tmp.csv
+			#max=$(echo $data | cut -d" " -f1 | sort -r )					
+			#avg=$(echo "$data" | tr " " "\n" | awk '{sum+=$1} END {printf "%.2f\n", sum/NR}')
+	    done 
+		if [ $choix_sort -eq 0 ]; then				## This makes  a call to the C programs which must then be sorted. A makefile was made but we didn't manage to implement it in the shell script
+			gcc sortAVL.c -o sortAVL
+			./sortAVL tmp.csv $choix_sort			##In addition sortAVL.c is the sorting defined by default
+		elif [ $choix_sort  -eq 1 ]; then
+			gcc sortABR.c -o sortABR			
+			./sortABR tmp.csv $choix_sort
+		else
+			gcc sortTAB.c -o sortTAB
+			./sortTAB tmp.csv $choix_sort
+		fi
+	fi
+	
+done
+
+## we did not manage to sort by date and therefore the -p2/-p3 and -t2/-t3 was not feasible according to the specifications
+	
+##########################################		zone Gnuplot 		###################################################
+	
+for i in $*; do							## Gunplot is always the things, we associate the x-axis and y-axis of the data in order to create graphs according to the users' requests. The graphs are made according to their request, and the options chosen
+
+    cat meteo_filtered_data_v1.csv | sed -n '1p;$p'                                ## or vals=($(sort -g stats.dat | sed -n '1p;$p'
+    vmax =`echo "${vals[1]} + 5" | bc -l`   
+    set terminal png size 800,500 enhanced background rgb 'white' > gnuplot_script      ## or put a map for the interpolated map
+    set output "meteo_filtered_data_v1.csv"
+    
+    if [ $i == "-h" ] ; then
+        ##set title 'altitude graph :'>> gnuplot_script          ## We didn't manage to make the graphs but here are the different ways we used
+        ##set ylabel 'Latitude' >> gnuplot_script                                 ## We haven't figured out how to make the interpolated map, but we know that you have to put an image in the background and then draw vectors on it 
+        ##set xlabel 'Longitude' >> gnuplot_script                                ## Get all the data and adapt them to the .png to the things we want
+        ##set output 'altitude.png' >> gnuplot_script
+        ##set datafile separator ";"							## To separate data with ";" to avoid confusion with "," in the coordinates
+        ##set angles degrees 
+        ##set xrange [$min:$max]
+        ##set yrange[$ymin:$ymin]
+        ##plot "meteo_filtered_data_v1.csv" filetype=png using 1:16			## to output a graph in *.png
+        ##echo "set terminal png size 800,500 enhanced background rgb 'white'" > gnuplot_script				## To output a graph in *.png with a white background 
+
+
+echo "set style line 1 lt 1 lw 1.5 pt 3 linecolor rgb '#2b63ff'" >> gnuplot_script              ## An other way to do it but it only returns only the first and last value
+echo "set output 'altitude.png'" >> gnuplot_script												## Gunplot give the possibility to do some graph with data in abscissa, ordinate ... These data have normally been previously sorted by C
+echo "set autoscale" >> gnuplot_script
+echo "set xtic auto" >> gnuplot_script                                                          ## To specify the distance between != tics ->>>> set xtic auto set ytic auto
+echo "set ytic auto" >> gnuplot_script 
+echo "set title '$1'" >> gnuplot_script
+echo "set ylabel 'Latitude'" >> gnuplot_script
+echo "set xlabel 'Longitude'" >> gnuplot_script
+echo "set xr [$xmin:$xmax]" >> gnuplot_script                                                   ## To specify data interval ->>> set xr [$xmin:$xmax] set yr [$ymin:$ymax]
+echo "set yr [$ymin:$ymax]" >> gnuplot_script
+echo "set nokey" >> gnuplot_script
+echo "plot 'end.csv' with linespoints ls 1" >> gnuplot_script
+
+        ##for i in $*.csv do                                                ## A new way to do the graph and upload the graph with gunplot
+        ##gunplot << EOF
+        ##set title "graph"
+        ##plot x
+        ##unset output
+        ##set term wxt
+        ##EOF
+        ##done
+        
+    fi
+    if [ $i == "-h" ] ; then   
+	    set title ' altitude graph :' >> gnuplot_script			## For the interpolated map, we should put a background map with the following function     set terminal png size 800,500 enhanced background rgb 'map' > gnuplot_script 
+        set ylabel 'Latitude' >> gnuplot_script
+        set xlabel 'Longitude' >> gnuplot_script
+        set output 'altitude.png' >> gnuplot_script       		## To output a graph in *.png          
+	fi
+    if [ $i == "-w" ] ; then                          			## For the interpolated map, we should put a background map with the following function     set terminal png size 800,500 enhanced background rgb 'map' > gnuplot_script 
+        set title 'Wind graph :' >> gnuplot_script
+        set ylabel 'Latitude' >> gnuplot_script
+        set xlabel 'Longitude' >> gnuplot_script
+        set output 'wind.png' >> gnuplot_script
+    fi
+    if [ $i == "-m" ] ; then                              
+        set title 'Humidity graph :' >> gnuplot_script
+        set ylabel 'Latitude' >> gnuplot_script
+        set xlabel 'Longitude' >> gnuplot_script
+        set output 'humidity.png' >> gnuplot_script
+        plot "meteo_filtered_data_v1.csv" with vectors filled heads		##For a map with vectors 
+    fi
+    if [ $i == "-p1" ] ; then                             
+        set title 'Graph of minimum, maximum, average pressure in ascending order of station ID  :' >> gnuplot_script
+        set ylabel 'Minimum, maximum, average pressure' >> gnuplot_script
+        set xlabel 'ID station' >> gnuplot_script
+        set output 'pression1.png' >> gnuplot_script
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with xerrorlines              ## with using 1:2? 
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with yerrorlines
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with xyerrorlines
+
+    elif [ $i == "-p2" ] ; then                           
+        set title 'Graph of average pressures by date/time in chronological order:' >> gnuplot_script
+        set ylabel 'Average of the measurements' >> gnuplot_script
+        set xlabel 'Date/Hours of measurements' >> gnuplot_script
+        set output 'pression2.png' >> gnuplot_script
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with lines
+
+    elif [ $i == "-p3" ] ; then                            
+        set title 'Grapics of station pressures by date and time :' >> gnuplot_script
+        set ylabel 'Date' >> gnuplot_script
+        set xlabel 'Measured values' >> gnuplot_script
+        set output 'pression3.png' >> gnuplot_script					
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with lines, "meteo_filtered_data_v1.csv" with lines        ## or with using -->>> gnuplot> plot "evolution_solde_fe.txt" using 1:2 title "Solde naturel"
+                                                                            ##with lines, "evolution_solde_fe.txt" using 1:3 title "Solde migratoire" with lines
+    fi
+
+    if [ $i == "-t1" ] ; then                               
+        set title 'Graph of minimum, maximum and average temperatures in ascending order of station ID :' >> gnuplot_script
+        set ylabel 'Minimum, maximum, average temperatures' >> gnuplot_script
+        set xlabel 'ID station' >> gnuplot_script
+        set output 'temperature1.png' >> gnuplot_script
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with xerrorlines              ## avec le using 1 2 
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with yerrorlines
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with xyerrorlines
+
+    elif [ $i == "-t2" ] ; then                             
+        set title 'Graph of average temperatures by date/time in chronological order: ' >> gnuplot_script
+        set ylabel 'Average of the measurements' >> gnuplot_script
+        set xlabel 'Date/Hours of measurements' >> gnuplot_script
+        set output 'temperature2.png' >> gnuplot_script
+        echo "plot 'meteo_filtered_data_v1.csv' with linespoints ls 1" >> gnuplot_script         ## or gnuplot> plot "meteo_filtered_data_v1.csv" with lines
+
+    elif [ $i == "-t3" ] ; then                             
+        set title 'Temperature graph by date and time per station :' >> gnuplot_script
+        set ylabel 'Date' >> gnuplot_script
+        set xlabel 'Measured values' >> gnuplot_script
+        set output 'temperature3.png' >> gnuplot_script
+        gnuplot_script > plot "meteo_filtered_data_v1.csv" with lines, "meteo_filtered_data_v1.csv" with lines		##To a graph with line on a white background
+    fi
+
+done 
+
+IFS=$oldIFS
