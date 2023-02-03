@@ -1,0 +1,13 @@
+all : meteo_filtered_data
+
+sortABR.o : sortABR.c sortABR.h sortAVL.h sortTAB.h
+	gcc -c $< -o $@
+
+sortAVL.o : sortAVL.c sortABR.h sortAVL.h sortTAB.h
+	gcc -c $< -o $@
+
+sortTAB.o : sortAVL.c sortABR.h sortAVL.h sortTAB.h
+	gcc -c $< -o $@
+
+meteo_filtered_data: sortTAB.o sortAVL.o sortABR.o
+	gcc $^ -o $@
